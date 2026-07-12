@@ -296,14 +296,14 @@ async function approveRequest(r, amountOverride){
       if(state.points < cost) return alert(`Puntos insuficientes: necesita ${cost} pts y tiene ${state.points}`);
       await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
       await updState({points:FieldValue.increment(-cost)});
-      await addMove("robux",`🎮 Robux $${r.amountMxn} (pagó con puntos)`,{pts:-cost,mxn:r.amountMxn});
+      await addMove("robux",`🎮 ${r.rbx?r.rbx+" Robux":"Robux"} — $${r.amountMxn} (pagó con puntos)`,{pts:-cost,mxn:r.amountMxn});
       toast(`Aprobado: $${r.amountMxn} MXN (−${cost} pts)`);
     }else{
       const cost = robuxCostMin(r.amountMxn);
       if(state.minutes < cost) return alert(`Minutos insuficientes: necesita ${cost} min y tiene ${state.minutes}`);
       await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
       await updState({minutes:FieldValue.increment(-cost)});
-      await addMove("robux",`🎮 Robux $${r.amountMxn} (pagó con minutos)`,{min:-cost,mxn:r.amountMxn});
+      await addMove("robux",`🎮 ${r.rbx?r.rbx+" Robux":"Robux"} — $${r.amountMxn} (pagó con minutos)`,{min:-cost,mxn:r.amountMxn});
       toast(`Aprobado: $${r.amountMxn} MXN (−${cost} min)`);
     }
   }else if(r.type==="perk"){
@@ -350,7 +350,7 @@ async function submitSession(){
   await col("sessions").add({bookId,bookTitle:b.title,pages,date:todayStr(),status:"pendiente",createdAt:FieldValue.serverTimestamp()});
   closeModal(); toast("📖 ¡Registrado! Cuéntale a papá qué leíste");
 }
-let reqPick = 0;
+let reqPick = 0, reqPickRbx = 0;
 async function submitWithdraw(){
   if(reqPick<=0) return alert("Elige cuántos minutos");
   if(reqPick > state.minutes) return alert("No tienes tantos minutos guardados");
@@ -358,7 +358,7 @@ async function submitWithdraw(){
   closeModal(); toast("⏱ Solicitud enviada a papá");
 }
 async function submitRobux(payWith){
-  if(reqPick < config.minRobuxMxn) return alert(`Mínimo $${config.minRobuxMxn} MXN — elige una cantidad`);
+  if(reqPick<=0) return alert("Elige un paquete de Robux");
   if(payWith==="pts"){
     const cost = robuxCostPts(reqPick);
     if(cost > state.points) return alert(`Necesitas ${cost} puntos y tienes ${state.points}`);
@@ -366,7 +366,7 @@ async function submitRobux(payWith){
     const cost = robuxCostMin(reqPick);
     if(cost > state.minutes) return alert(`Necesitas ${cost} min y tienes ${state.minutes}`);
   }
-  await col("requests").add({type:"robux",amountMxn:reqPick,payWith,status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+  await col("requests").add({type:"robux",amountMxn:reqPick,rbx:reqPickRbx,payWith,status:"pendiente",createdAt:FieldValue.serverTimestamp()});
   closeModal(); toast("🎮 Solicitud enviada a papá");
 }
 async function submitFreeze(){
@@ -421,17 +421,19 @@ function modalWithdraw(){
   `);
 }
 function modalRobux(){
-  reqPick=0;
-  const opts=[40,100,200,300].map(m=>`<button class="chip" data-v="${m}" onclick="pickChip(this,${m})">$${m}<br><small style="font-weight:600">${robuxCostPts(m)} pts · ${robuxCostMin(m)} min</small></button>`).join("");
+  reqPick=0; reqPickRbx=0;
+  const PKGS=[{rbx:40,mxn:13},{rbx:80,mxn:25},{rbx:400,mxn:129},{rbx:800,mxn:249}];
+  const opts=PKGS.map(k=>`<button class="chip" onclick="pickChipR(this,${k.mxn},${k.rbx})">${k.rbx} R$<br><small style="font-weight:600">$${k.mxn} · ${robuxCostPts(k.mxn)} pts · ${robuxCostMin(k.mxn)} min</small></button>`).join("");
   showModal(`
     <h3>🎮 Comprar Robux</h3>
-    <p class="muted">Tienes <b style="color:var(--gold)">${state.points} pts</b> y <b style="color:var(--blue)">${state.minutes} min</b>. Elige cantidad y con qué pagar.</p>
+    <p class="muted">Paquetes reales de Roblox. Tienes <b style="color:var(--gold)">${state.points} pts</b> y <b style="color:var(--blue)">${state.minutes} min</b>.</p>
     <div class="chip-row">${opts}</div>
     <button class="btn" onclick="submitRobux('pts')">🪙 Pagar con puntos</button>
     <button class="btn blue" style="margin-top:10px" onclick="submitRobux('min')">⏱ Pagar con minutos</button>
   `);
 }
 function pickChip(el,v){ reqPick=v; document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on")); el.classList.add("on"); }
+function pickChipR(el,mxn,rbx){ reqPick=mxn; reqPickRbx=rbx; document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on")); el.classList.add("on"); }
 
 /* ================= RENDER ================= */
 function render(){
@@ -568,7 +570,7 @@ function kidRequests(){
       <p class="muted">Cambia tus minutos guardados por tiempo extra. Papá aprueba según el día.</p>
       <button class="btn blue" onclick="modalWithdraw()">Pedir tiempo</button></div>
     <div class="card"><h3>🎮 Robux</h3>
-      <p class="muted">Paga con puntos (${config.ptsPerMxn} pts = 1 MXN) o con minutos (10 min = ${config.mxnPer10Min} MXN). Mínimo $${config.minRobuxMxn}.</p>
+      <p class="muted">Paquetes desde 40 R$ ($13). Paga con puntos (${config.ptsPerMxn} pts = 1 MXN) o con minutos (10 min = ${config.mxnPer10Min} MXN).</p>
       <button class="btn coral" onclick="modalRobux()">Cambiar por Robux</button></div>
     <div class="card"><h3>🧊 Congelar racha</h3>
       <p class="muted">¿Día muy ocupado? Pide congelar tu racha (máx 2 por semana).</p>
@@ -600,7 +602,7 @@ async function approveWish(id){
 }
 function reqLine(r, parentMode){
   const names={retiro:"⏱ Tiempo de pantalla",robux:"🎮 Robux",congelar:"🧊 Congelar racha",perk:`${r.perkEmoji||"🎁"} ${esc(r.perkName||"Premio")}`,deseo:`✨ ${esc(r.wish||"Deseo")}`};
-  const amount = r.type==="retiro" ? minToStr(r.amountMin) : r.type==="robux" ? `$${r.amountMxn} (${r.payWith==="pts"?robuxCostPts(r.amountMxn)+" pts":robuxCostMin(r.amountMxn)+" min"})` : r.type==="perk" ? `${r.cost} puntos` : r.type==="deseo" ? (r.status==="aprobada"?`${r.cost} puntos`:"papá decide el costo") : "";
+  const amount = r.type==="retiro" ? minToStr(r.amountMin) : r.type==="robux" ? `${r.rbx?r.rbx+" R$ · ":""}$${r.amountMxn} (${r.payWith==="pts"?robuxCostPts(r.amountMxn)+" pts":robuxCostMin(r.amountMxn)+" min"})` : r.type==="perk" ? `${r.cost} puntos` : r.type==="deseo" ? (r.status==="aprobada"?`${r.cost} puntos`:"papá decide el costo") : "";
   const st={pendiente:["pend","pendiente"],aprobada:["ok","aprobada"],rechazada:["no","rechazada"]}[r.status];
   if(parentMode && r.status==="pendiente" && r.type==="deseo"){
     return `<div class="item" style="flex-wrap:wrap"><div class="grow" style="min-width:100%"><div class="t">${names.deseo}</div><div class="s">Tiene ${state.points} pts · pon el costo:</div></div>
@@ -664,7 +666,6 @@ function parentSettings(){
       <label>Páginas por 1 minuto</label><input id="cf-ppm" type="number" value="${c.pagesPerMin}">
       <label>Puntos por 1 MXN (Robux)</label><input id="cf-mxn" type="number" value="${c.ptsPerMxn}">
       <label>MXN por cada 10 min (Robux)</label><input id="cf-mxn10" type="number" value="${c.mxnPer10Min}">
-      <label>Mínimo Robux (MXN)</label><input id="cf-minrbx" type="number" value="${c.minRobuxMxn}">
       <label>Páginas mínimas para racha</label><input id="cf-smin" type="number" value="${c.streakMinPages}">
       <label>Bono cada 7 días de racha</label><input id="cf-sbonus" type="number" value="${c.streakBonus}">
       <button class="btn blue" style="margin-top:14px" onclick="saveConfig()">Guardar tasas</button></div>
@@ -701,7 +702,7 @@ async function saveConfig(){
   const num=id=>parseFloat($(id).value)||0;
   await root.collection("meta").doc("config").update({
     ptsEs:num("#cf-ptsEs"),ptsEn:num("#cf-ptsEn"),pagesPerMin:num("#cf-ppm"),
-    ptsPerMxn:num("#cf-mxn"),mxnPer10Min:num("#cf-mxn10"),minRobuxMxn:num("#cf-minrbx"),
+    ptsPerMxn:num("#cf-mxn"),mxnPer10Min:num("#cf-mxn10"),
     streakMinPages:num("#cf-smin"),streakBonus:num("#cf-sbonus")});
   toast("Tasas guardadas");
 }

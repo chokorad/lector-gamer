@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Solo la ruta secreta de la familia es accesible.
+    // El ID largo y aleatorio funciona como contraseña.
+    match /families/fam_7kQ2mXr9pL4wZ8vB/{document=**} {
+      allow read, write: if true;
+    }
+    // Todo lo demas: bloqueado
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

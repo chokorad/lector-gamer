@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lector Gamer</title>
+<meta name="theme-color" content="#1B1440">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#1B1440; --bg2:#241B54; --card:#2C2266; --card2:#382D7A;
+  --ink:#F4F2FF; --ink-dim:#B9B3E0;
+  --blue:#4DA3FF; --gold:#FFC93C; --mint:#3DDC97; --coral:#FF5D73; --lav:#9D8CFF;
+  --r:20px;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Nunito',system-ui,sans-serif;font-size:16px}
+body{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+h1,h2,h3,.disp{font-family:'Fredoka',system-ui,sans-serif;letter-spacing:.2px}
+button{font-family:inherit;border:none;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:16px;width:100%;padding:12px 14px;border-radius:14px;border:2px solid #4a3f96;background:var(--bg2);color:var(--ink);outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--blue)}
+label{display:block;font-size:13px;font-weight:800;color:var(--ink-dim);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.6px}
+
+/* ---------- HUD ---------- */
+.hud{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,var(--bg) 70%,transparent);padding:14px 14px 10px}
+.hud-inner{display:flex;gap:8px;align-items:center}
+.pill{flex:1;display:flex;align-items:center;gap:7px;background:var(--card);border:3px solid var(--card2);border-radius:999px;padding:8px 12px;box-shadow:0 4px 0 rgba(0,0,0,.35)}
+.pill .ico{font-size:20px}
+.pill .val{font-family:'Fredoka';font-weight:700;font-size:19px;line-height:1}
+.pill .lbl{font-size:10px;color:var(--ink-dim);font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+.pill.gold .val{color:var(--gold)} .pill.blue .val{color:var(--blue)} .pill.fire .val{color:var(--coral)}
+.pill .col{display:flex;flex-direction:column}
+
+/* ---------- layout ---------- */
+.wrap{padding:4px 14px 20px;max-width:560px;margin:0 auto}
+.card{background:var(--card);border:3px solid var(--card2);border-radius:var(--r);padding:16px;margin:12px 0;box-shadow:0 5px 0 rgba(0,0,0,.3)}
+.card h3{margin:0 0 8px;font-size:19px}
+.muted{color:var(--ink-dim);font-size:14px}
+.row{display:flex;gap:10px;align-items:center}
+.grow{flex:1}
+.btn{display:block;width:100%;padding:14px;border-radius:16px;font-family:'Fredoka';font-weight:600;font-size:17px;color:#14102e;background:var(--gold);box-shadow:0 4px 0 #b8890a;transition:transform .05s}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #b8890a}
+.btn.blue{background:var(--blue);box-shadow:0 4px 0 #2268b5}
+.btn.blue:active{box-shadow:0 1px 0 #2268b5}
+.btn.mint{background:var(--mint);box-shadow:0 4px 0 #1f9364}
+.btn.mint:active{box-shadow:0 1px 0 #1f9364}
+.btn.coral{background:var(--coral);color:#fff;box-shadow:0 4px 0 #b53049}
+.btn.coral:active{box-shadow:0 1px 0 #b53049}
+.btn.ghost{background:var(--bg2);color:var(--ink);box-shadow:0 4px 0 #120d33;border:2px solid var(--card2)}
+.btn.sm{padding:9px 12px;font-size:14px;width:auto;border-radius:12px}
+.btn:disabled{opacity:.45;pointer-events:none}
+
+/* XP bar */
+.xp{height:18px;background:var(--bg2);border:2px solid var(--card2);border-radius:999px;overflow:hidden;margin:8px 0 4px}
+.xp>i{display:block;height:100%;background:linear-gradient(90deg,var(--mint),var(--blue));border-radius:999px;transition:width .5s}
+
+.tag{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px}
+.tag.es{background:#3b5f2f;color:#c9f7b0}
+.tag.en{background:#5f2f5a;color:#f7b0ea}
+.tag.pend{background:#5c4d13;color:var(--gold)}
+.tag.ok{background:#1d4d38;color:var(--mint)}
+.tag.no{background:#5c1d29;color:#ffb3bf}
+
+/* tabs */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:var(--bg2);border-top:3px solid var(--card2);padding:6px 6px calc(6px + env(safe-area-inset-bottom))}
+.tabs button{flex:1;background:none;color:var(--ink-dim);padding:8px 2px;border-radius:14px;font-size:11px;font-weight:800;display:flex;flex-direction:column;align-items:center;gap:2px}
+.tabs button .i{font-size:22px;line-height:1}
+.tabs button.on{color:var(--ink);background:var(--card)}
+.badge{position:absolute;transform:translate(14px,-4px);background:var(--coral);color:#fff;font-size:10px;font-weight:800;border-radius:999px;min-width:17px;height:17px;display:flex;align-items:center;justify-content:center;padding:0 4px}
+
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(10,7,30,.75);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.modal{background:var(--bg2);border:3px solid var(--card2);border-radius:24px 24px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));width:100%;max-width:560px;max-height:88vh;overflow-y:auto}
+.modal h3{margin:0 0 4px;font-size:21px}
+@media(min-width:600px){.modal-bg{align-items:center}.modal{border-radius:24px}}
+
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.chip{padding:10px 16px;border-radius:14px;background:var(--card);border:2px solid var(--card2);color:var(--ink);font-family:'Fredoka';font-weight:600;font-size:16px}
+.chip.on{background:var(--blue);color:#14102e;border-color:var(--blue)}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(96px + env(safe-area-inset-bottom));background:var(--mint);color:#0d2b1e;font-weight:800;padding:12px 20px;border-radius:999px;z-index:60;box-shadow:0 6px 20px rgba(0,0,0,.5);animation:pop .25s}
+@keyframes pop{from{transform:translateX(-50%) scale(.7);opacity:0}}
+
+.item{display:flex;gap:10px;align-items:center;padding:11px 0;border-bottom:2px solid var(--bg2)}
+.item:last-child{border-bottom:none}
+.item .t{font-weight:800;font-size:15px}
+.item .s{font-size:12.5px;color:var(--ink-dim)}
+.amount{font-family:'Fredoka';font-weight:700;font-size:17px;white-space:nowrap}
+.amount.plus{color:var(--mint)} .amount.minus{color:var(--coral)}
+
+.hero{text-align:center;padding:26px 10px 6px}
+.hero h1{font-size:30px;margin:0}
+.hero p{color:var(--ink-dim);margin:6px 0 0}
+.role-btn{margin:14px 0}
+.empty{text-align:center;padding:26px 10px;color:var(--ink-dim)}
+.empty .i{font-size:42px;display:block;margin-bottom:6px}
+.spin{text-align:center;padding:60px;color:var(--ink-dim);font-family:'Fredoka'}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"><div class="spin">Cargando… 🎮</div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+/* ================= FIREBASE ================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDg7tyuHyjL4iUYpYWNnm6Mq6IbCfcaITA",
+  authDomain: "yosi-robux.firebaseapp.com",
+  projectId: "yosi-robux",
+  storageBucket: "yosi-robux.firebasestorage.app",
+  messagingSenderId: "455934248104",
+  appId: "1:455934248104:web:7b3d29713a0ed7ad9eee9d"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+const FAM = "fam_7kQ2mXr9pL4wZ8vB";           // ruta privada de la familia
+const root = db.collection("families").doc(FAM);
+const col = n => root.collection(n);
+const FieldValue = firebase.firestore.FieldValue;
+
+/* ================= STATE ================= */
+let config=null, state=null, books=[], sessions=[], requests=[], moves=[];
+let role = localStorage.getItem("lg_role") || null;   // 'kid' | 'parent'
+let tab = "inicio";
+let unsub = [];
+
+const DEFAULT_CONFIG = {
+  kidName:"Yosi", parentPin:"1234",
+  ptsEs:1, ptsEn:2, pagesPerMin:2, mxnPer10Min:5, minRobuxMxn:40,
+  streakMinPages:10, streakBonus:25,
+  milestones:{ "30":100, "60":250, "100":500 }
+};
+const DEFAULT_STATE = {
+  points:0, minutes:0, streak:0, bestStreak:0,
+  lastStreakDate:null, freezesThisWeek:0, weekKey:""
+};
+
+/* ================= HELPERS ================= */
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function todayStr(d=new Date()){ const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+function addDays(str,n){ const [y,m,d]=str.split("-").map(Number); const dt=new Date(y,m-1,d+n); return todayStr(dt); }
+function weekKey(d=new Date()){ // lunes como inicio de semana
+  const dt=new Date(d); const day=(dt.getDay()+6)%7; dt.setDate(dt.getDate()-day);
+  return todayStr(dt);
+}
+function fmtDate(str){ if(!str) return ""; const [y,m,d]=str.split("-"); const M=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return `${Number(d)} ${M[Number(m)-1]}`; }
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2400); }
+function minToStr(min){ min=Math.max(0,Math.round(min)); const h=Math.floor(min/60), m=min%60; return h? `${h}h ${m}m` : `${m} min`; }
+
+/* Ganancias por sesión */
+function earnFor(pages, lang, isReread){
+  const c = config;
+  let pts = pages * (lang==="en" ? c.ptsEn : c.ptsEs);
+  let min = (pages / c.pagesPerMin) * (lang==="en" ? 2 : 1);
+  if(isReread){ pts/=2; min/=2; }
+  return { pts: Math.floor(pts), min: Math.floor(min) };
+}
+/* Premio sugerido por libro */
+function suggestPrize(pages, lang, isReread){
+  if(isReread) return 0;
+  let mxn = Math.min(300, Math.ceil(pages/100)*100);
+  if(lang==="en") mxn = Math.min(300, mxn*2);
+  return mxn;
+}
+function robuxCostMin(mxn){ return Math.round(mxn / config.mxnPer10Min * 10); }
+
+/* ================= FIRESTORE SEED + LISTEN ================= */
+async function boot(){
+  const cfgRef = root.collection("meta").doc("config");
+  const stRef  = root.collection("meta").doc("state");
+  const [c,s] = await Promise.all([cfgRef.get(), stRef.get()]);
+  if(!c.exists) await cfgRef.set(DEFAULT_CONFIG);
+  if(!s.exists) await stRef.set(DEFAULT_STATE);
+
+  unsub.push(cfgRef.onSnapshot(d=>{ config=d.data(); render(); }));
+  unsub.push(stRef.onSnapshot(d=>{ state=d.data(); render(); }));
+  unsub.push(col("books").orderBy("createdAt","desc").onSnapshot(q=>{ books=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
+  unsub.push(col("sessions").orderBy("createdAt","desc").limit(120).onSnapshot(q=>{ sessions=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
+  unsub.push(col("requests").orderBy("createdAt","desc").limit(60).onSnapshot(q=>{ requests=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
+  unsub.push(col("moves").orderBy("createdAt","desc").limit(80).onSnapshot(q=>{ moves=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
+}
+boot();
+
+/* Ledger */
+function addMove(type,label,{pts=0,min=0,mxn=0}={}){
+  return col("moves").add({type,label,pts,min,mxn,date:todayStr(),createdAt:FieldValue.serverTimestamp()});
+}
+function updState(patch){ return root.collection("meta").doc("state").update(patch); }
+
+/* ================= APROBACIONES (PAPÁ) ================= */
+async function approveSession(s){
+  const book = books.find(b=>b.id===s.bookId);
+  if(!book) return alert("Libro no encontrado");
+  const e = earnFor(s.pages, book.language, !!book.isReread);
+  await col("sessions").doc(s.id).update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
+  await col("books").doc(book.id).update({pagesApproved:FieldValue.increment(s.pages)});
+  await updState({points:FieldValue.increment(e.pts), minutes:FieldValue.increment(e.min)});
+  await addMove("lectura",`Leyó ${s.pages} pág — ${book.title}`,{pts:e.pts,min:e.min});
+  await updateStreak(s.date, s.pages, s.id);
+  toast(`✅ +${e.pts} pts, +${e.min} min`);
+  const totalNow = (book.pagesApproved||0)+s.pages;
+  if(totalNow >= book.totalPages && book.status!=="terminado"){
+    openFinishBook(book, totalNow);
+  }
+}
+async function updateStreak(dateStr, pagesJustApproved, sessionId){
+  const c=config, st=state;
+  // páginas aprobadas ese día (incluida la recién aprobada, sin contarla dos veces)
+  const dayPages = sessions.filter(x=>x.date===dateStr && x.status==="aprobada" && x.id!==sessionId).reduce((a,x)=>a+x.pages,0) + pagesJustApproved;
+  if(dayPages < c.streakMinPages) return;
+  if(st.lastStreakDate === dateStr) return; // ya contó hoy
+  let ns;
+  if(st.lastStreakDate && addDays(st.lastStreakDate,1)===dateStr) ns = st.streak+1;
+  else ns = 1;
+  const patch = {streak:ns, lastStreakDate:dateStr};
+  if(ns > (st.bestStreak||0)) patch.bestStreak = ns;
+  await updState(patch);
+  if(ns>0 && ns%7===0){
+    await updState({points:FieldValue.increment(c.streakBonus)});
+    await addMove("racha",`Racha de ${ns} días 🔥`,{pts:c.streakBonus});
+    toast(`🔥 ¡Racha de ${ns} días! +${c.streakBonus} pts`);
+  }
+  const mil = (c.milestones||{})[String(ns)];
+  if(mil){
+    await updState({points:FieldValue.increment(mil)});
+    await addMove("meta",`¡Meta de ${ns} días! 🏆`,{pts:mil});
+    toast(`🏆 ¡${ns} días! +${mil} pts`);
+  }
+}
+async function rejectSession(s){
+  await col("sessions").doc(s.id).update({status:"rechazada",decidedAt:FieldValue.serverTimestamp()});
+  toast("Sesión rechazada");
+}
+async function approveBook(b, prize){
+  await col("books").doc(b.id).update({status:"leyendo",prizeMxn:prize});
+  toast(`📗 Libro aprobado — premio $${prize}`);
+}
+async function rejectBook(b){
+  await col("books").doc(b.id).update({status:"rechazado"});
+  toast("Libro rechazado");
+}
+function openFinishBook(book, total){
+  showModal(`
+    <h3>🎉 ¡Libro terminado!</h3>
+    <p class="muted"><b>${esc(book.title)}</b> — ${total} páginas leídas.</p>
+    <p>Premio acordado: <b class="disp" style="color:var(--gold)">$${book.prizeMxn} MXN en Robux</b> (tarjeta física, la compras tú).</p>
+    <button class="btn mint" onclick="finishBook('${book.id}')">Confirmar y registrar premio</button>
+    <button class="btn ghost" style="margin-top:10px" onclick="closeModal()">Después</button>
+  `);
+}
+async function finishBook(id){
+  const b = books.find(x=>x.id===id); if(!b) return;
+  await col("books").doc(id).update({status:"terminado",finishedAt:FieldValue.serverTimestamp()});
+  await addMove("libro",`📕 Terminó "${b.title}" — premio Robux`,{mxn:b.prizeMxn});
+  closeModal(); toast(`🎁 Premio de $${b.prizeMxn} registrado`);
+}
+async function approveRequest(r, amountOverride){
+  const ref = col("requests").doc(r.id);
+  if(r.type==="retiro"){
+    const amt = Math.min(amountOverride ?? r.amountMin, state.minutes);
+    if(amt<=0) return alert("Sin saldo suficiente");
+    await ref.update({status:"aprobada",amountMin:amt,decidedAt:FieldValue.serverTimestamp()});
+    await updState({minutes:FieldValue.increment(-amt)});
+    await addMove("retiro",`⏱ Retiró tiempo de pantalla`,{min:-amt});
+    toast(`Aprobado: ${minToStr(amt)}. Ahora extiéndelo en Tiempo en Pantalla.`);
+  }else if(r.type==="robux"){
+    const cost = robuxCostMin(r.amountMxn);
+    if(state.minutes < cost) return alert(`Saldo insuficiente: necesita ${cost} min y tiene ${state.minutes}`);
+    await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
+    await updState({minutes:FieldValue.increment(-cost)});
+    await addMove("robux",`🎮 Cambió minutos por Robux $${r.amountMxn}`,{min:-cost,mxn:r.amountMxn});
+    toast(`Aprobado: $${r.amountMxn} MXN (−${cost} min)`);
+  }else if(r.type==="congelar"){
+    const wk = weekKey();
+    let used = (state.weekKey===wk) ? (state.freezesThisWeek||0) : 0;
+    if(used>=2) return alert("Ya usó 2 congeladas esta semana");
+    await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
+    await updState({lastStreakDate:addDays(todayStr(),-1),freezesThisWeek:used+1,weekKey:wk});
+    await addMove("congelar",`🧊 Racha congelada (${used+1}/2 semana)`,{});
+    toast("🧊 Racha protegida");
+  }
+  render();
+}
+async function rejectRequest(r){
+  await col("requests").doc(r.id).update({status:"rechazada",decidedAt:FieldValue.serverTimestamp()});
+  toast("Solicitud rechazada");
+}
+
+/* ================= ACCIONES (NIÑO) ================= */
+async function submitBook(){
+  const title = $("#nb-title").value.trim();
+  const pages = parseInt($("#nb-pages").value,10);
+  const lang = $("#nb-lang").value;
+  const isReread = $("#nb-reread").checked;
+  if(!title || !pages || pages<1) return alert("Pon el título y las páginas");
+  await col("books").add({title,totalPages:pages,language:lang,isReread,status:"pendiente",
+    prizeMxn:suggestPrize(pages,lang,isReread),pagesApproved:0,createdAt:FieldValue.serverTimestamp()});
+  closeModal(); toast("📚 Enviado a papá para aprobar");
+}
+async function submitSession(){
+  const bookId = $("#ns-book").value;
+  const pages = parseInt($("#ns-pages").value,10);
+  if(!bookId) return alert("Elige un libro");
+  if(!pages || pages<1) return alert("¿Cuántas páginas leíste?");
+  const b = books.find(x=>x.id===bookId);
+  const remaining = b.totalPages - (b.pagesApproved||0);
+  if(pages > remaining) return alert(`Solo quedan ${remaining} páginas de ese libro`);
+  await col("sessions").add({bookId,bookTitle:b.title,pages,date:todayStr(),status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+  closeModal(); toast("📖 ¡Registrado! Cuéntale a papá qué leíste");
+}
+let reqPick = 0;
+async function submitWithdraw(){
+  if(reqPick<=0) return alert("Elige cuántos minutos");
+  if(reqPick > state.minutes) return alert("No tienes tantos minutos guardados");
+  await col("requests").add({type:"retiro",amountMin:reqPick,status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+  closeModal(); toast("⏱ Solicitud enviada a papá");
+}
+async function submitRobux(){
+  if(reqPick < config.minRobuxMxn) return alert(`Mínimo $${config.minRobuxMxn} MXN`);
+  const cost = robuxCostMin(reqPick);
+  if(cost > state.minutes) return alert(`Necesitas ${cost} min y tienes ${state.minutes}`);
+  await col("requests").add({type:"robux",amountMxn:reqPick,status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+  closeModal(); toast("🎮 Solicitud enviada a papá");
+}
+async function submitFreeze(){
+  await col("requests").add({type:"congelar",status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+  closeModal(); toast("🧊 Solicitud enviada");
+}
+
+/* ================= MODALS ================= */
+function showModal(html){
+  closeModal();
+  const bg=document.createElement("div"); bg.className="modal-bg"; bg.id="modalbg";
+  bg.innerHTML=`<div class="modal">${html}</div>`;
+  bg.addEventListener("click",e=>{ if(e.target===bg) closeModal(); });
+  document.body.appendChild(bg);
+}
+function closeModal(){ $("#modalbg")?.remove(); }
+
+function modalNewBook(){
+  showModal(`
+    <h3>📚 Nuevo libro</h3>
+    <p class="muted">Papá lo revisa y aprueba el premio.</p>
+    <label>Título</label><input id="nb-title" placeholder="Ej. Dog Man">
+    <label>Páginas totales</label><input id="nb-pages" type="number" inputmode="numeric" placeholder="120">
+    <label>Idioma</label>
+    <select id="nb-lang"><option value="es">Español</option><option value="en">English 🚀 (¡vale doble!)</option></select>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-size:15px;margin-top:14px">
+      <input type="checkbox" id="nb-reread" style="width:22px;height:22px"> Ya lo leí antes (releer = mitad de puntos)
+    </label>
+    <button class="btn blue" style="margin-top:16px" onclick="submitBook()">Enviar a papá</button>
+  `);
+}
+function modalNewSession(){
+  const reading = books.filter(b=>b.status==="leyendo");
+  if(!reading.length) return showModal(`<h3>📖 Sin libros activos</h3><p class="muted">Primero registra un libro y espera que papá lo apruebe.</p><button class="btn ghost" onclick="closeModal()">Ok</button>`);
+  showModal(`
+    <h3>📖 Registrar lectura</h3>
+    <label>Libro</label>
+    <select id="ns-book">${reading.map(b=>`<option value="${b.id}">${esc(b.title)} (${b.totalPages-(b.pagesApproved||0)} pág restantes)</option>`).join("")}</select>
+    <label>Páginas leídas hoy</label><input id="ns-pages" type="number" inputmode="numeric" placeholder="10">
+    <p class="muted">Después cuéntale a papá (o dibuja) qué pasó en lo que leíste. Él aprueba y caen tus puntos. 💰</p>
+    <button class="btn mint" onclick="submitSession()">Registrar</button>
+  `);
+}
+function modalWithdraw(){
+  reqPick=0;
+  const opts=[15,30,45,60,90].map(m=>`<button class="chip" data-v="${m}" onclick="pickChip(this,${m})">${m} min</button>`).join("");
+  showModal(`
+    <h3>⏱ Pedir tiempo de pantalla</h3>
+    <p class="muted">Tienes <b style="color:var(--blue)">${minToStr(state.minutes)}</b> guardados. Papá decide según el día y tus deberes.</p>
+    <div class="chip-row">${opts}</div>
+    <button class="btn blue" onclick="submitWithdraw()">Pedir a papá</button>
+  `);
+}
+function modalRobux(){
+  reqPick=0;
+  const opts=[40,100,200,300].map(m=>`<button class="chip" data-v="${m}" onclick="pickChip(this,${m})">$${m}<br><small style="font-weight:600">${robuxCostMin(m)} min</small></button>`).join("");
+  showModal(`
+    <h3>🎮 Cambiar minutos por Robux</h3>
+    <p class="muted">Tasa: ${config.mxnPer10Min} MXN por cada 10 min. Tienes <b style="color:var(--blue)">${state.minutes} min</b>.</p>
+    <div class="chip-row">${opts}</div>
+    <button class="btn coral" onclick="submitRobux()">Pedir a papá</button>
+  `);
+}
+function pickChip(el,v){ reqPick=v; document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on")); el.classList.add("on"); }
+
+/* ================= RENDER ================= */
+function render(){
+  if(!config||!state){ return; }
+  const app=$("#app");
+  if(!role){ app.innerHTML=viewRole(); return; }
+  const pendCount = role==="parent" ? countPending() : 0;
+  app.innerHTML = `
+    ${hud()}
+    <div class="wrap">${role==="kid" ? kidView() : parentView()}</div>
+    ${tabsBar(pendCount)}
+  `;
+}
+function countPending(){
+  return books.filter(b=>b.status==="pendiente").length
+    + sessions.filter(s=>s.status==="pendiente").length
+    + requests.filter(r=>r.status==="pendiente").length;
+}
+function hud(){
+  return `<div class="hud"><div class="hud-inner">
+    <div class="pill gold"><span class="ico">🪙</span><span class="col"><span class="val">${state.points}</span><span class="lbl">puntos</span></span></div>
+    <div class="pill blue"><span class="ico">⏱</span><span class="col"><span class="val">${minToStr(state.minutes)}</span><span class="lbl">banco</span></span></div>
+    <div class="pill fire"><span class="ico">🔥</span><span class="col"><span class="val">${state.streak}</span><span class="lbl">racha</span></span></div>
+  </div></div>`;
+}
+function tabsBar(pend){
+  const T = role==="kid"
+    ? [["inicio","🏠","Inicio"],["libros","📚","Libros"],["pedir","🎁","Pedir"],["hist","📜","Historial"]]
+    : [["inbox","📥","Bandeja"],["libros","📚","Libros"],["hist","📜","Historial"],["ajustes","⚙️","Ajustes"]];
+  return `<nav class="tabs">${T.map(([id,ic,lb])=>`
+    <button class="${tab===id?"on":""}" onclick="setTab('${id}')">
+      <span class="i">${ic}${role==="parent"&&id==="inbox"&&pend?`<span class="badge">${pend}</span>`:""}</span>${lb}
+    </button>`).join("")}</nav>`;
+}
+function setTab(t){ tab=t; render(); window.scrollTo(0,0); }
+
+/* ---------- vistas rol ---------- */
+function viewRole(){
+  return `<div class="wrap"><div class="hero">
+    <h1>📖 Lector Gamer</h1><p>Lee. Gana. Juega.</p></div>
+    <button class="btn blue role-btn" onclick="chooseRole('kid')">🧒 Soy ${esc(config.kidName)}</button>
+    <button class="btn ghost role-btn" onclick="chooseRole('parent')">👨 Soy papá</button>
+  </div>`;
+}
+function chooseRole(r){
+  if(r==="parent"){
+    const pin = prompt("PIN de papá:");
+    if(pin !== (config?.parentPin||"1234")) return alert("PIN incorrecto");
+    tab="inbox";
+  } else { tab="inicio"; }
+  role=r; localStorage.setItem("lg_role",r); render();
+}
+function logout(){ role=null; localStorage.removeItem("lg_role"); render(); }
+
+/* ---------- NIÑO ---------- */
+function kidView(){
+  if(tab==="inicio") return kidHome();
+  if(tab==="libros") return kidBooks();
+  if(tab==="pedir") return kidRequests();
+  if(tab==="hist") return historyView();
+  return "";
+}
+function kidHome(){
+  const reading = books.filter(b=>b.status==="leyendo");
+  const wk = weekKey();
+  const freezes = state.weekKey===wk ? (state.freezesThisWeek||0) : 0;
+  const readToday = sessions.filter(s=>s.date===todayStr() && s.status!=="rechazada").reduce((a,s)=>a+s.pages,0);
+  return `
+    <div class="card" style="background:linear-gradient(135deg,var(--card),#3a2d85)">
+      <h3>¡Hola, ${esc(config.kidName)}! 👋</h3>
+      <p class="muted">${readToday>=config.streakMinPages
+        ? `Hoy ya llevas <b style="color:var(--mint)">${readToday} páginas</b>. ¡Racha segura! 🔥`
+        : `Lee <b style="color:var(--gold)">${config.streakMinPages - readToday} páginas más</b> hoy para cuidar tu racha 🔥`}</p>
+      <button class="btn mint" style="margin-top:10px" onclick="modalNewSession()">📖 Registrar lectura</button>
+    </div>
+    ${reading.length ? reading.map(b=>{
+      const p = Math.min(100, Math.round((b.pagesApproved||0)/b.totalPages*100));
+      return `<div class="card">
+        <div class="row"><div class="grow"><h3>${esc(b.title)}</h3></div><span class="tag ${b.language}">${b.language==="en"?"EN ×2":"ES"}</span></div>
+        <div class="xp"><i style="width:${p}%"></i></div>
+        <div class="row"><span class="muted grow">${b.pagesApproved||0} / ${b.totalPages} pág</span>
+        <span class="amount" style="color:var(--gold)">🎁 $${b.prizeMxn}</span></div>
+      </div>`;}).join("")
+    : `<div class="card empty"><span class="i">📚</span>No tienes libros activos.<br>¡Registra uno en la pestaña Libros!</div>`}
+    <div class="card">
+      <div class="row"><span style="font-size:26px">🧊</span><div class="grow">
+      <div class="t" style="font-weight:800">Congeladas de racha</div>
+      <div class="s muted">${2-freezes} disponibles esta semana</div></div>
+      <div class="grow"></div>
+      <span class="muted">Mejor racha: <b style="color:var(--coral)">${state.bestStreak||0} 🔥</b></span></div>
+    </div>`;
+}
+function kidBooks(){
+  return `
+    <button class="btn gold" onclick="modalNewBook()" style="margin-top:8px">➕ Registrar libro nuevo</button>
+    ${books.length? books.map(b=>bookCard(b,false)).join("") : `<div class="card empty"><span class="i">📚</span>Aún no hay libros</div>`}`;
+}
+function bookCard(b, parentMode){
+  const st = {pendiente:["pend","Esperando a papá"],leyendo:["ok","Leyendo"],terminado:["ok","¡Terminado! 🎉"],rechazado:["no","Rechazado"]}[b.status]||["pend",b.status];
+  const p = Math.min(100, Math.round((b.pagesApproved||0)/b.totalPages*100));
+  return `<div class="card">
+    <div class="row"><div class="grow"><h3>${esc(b.title)}</h3></div><span class="tag ${b.language}">${b.language==="en"?"EN ×2":"ES"}</span></div>
+    <div class="row" style="margin:4px 0"><span class="tag ${st[0]}">${st[1]}</span>${b.isReread?`<span class="tag pend">releer ½</span>`:""}</div>
+    ${b.status==="leyendo"||b.status==="terminado" ? `<div class="xp"><i style="width:${p}%"></i></div>`:""}
+    <div class="row"><span class="muted grow">${b.totalPages} pág — premio $${b.prizeMxn}</span></div>
+    ${parentMode && b.status==="pendiente" ? `
+      <label>Premio (MXN)</label>
+      <div class="row"><input id="prize-${b.id}" type="number" value="${b.prizeMxn}" style="max-width:110px">
+      <button class="btn mint sm" onclick="approveBook(books.find(x=>x.id==='${b.id}'), parseInt(document.getElementById('prize-${b.id}').value,10)||0)">Aprobar</button>
+      <button class="btn coral sm" onclick="rejectBook(books.find(x=>x.id==='${b.id}'))">No</button></div>`:""}
+  </div>`;
+}
+function kidRequests(){
+  const mine = requests.slice(0,10);
+  return `
+    <div class="card"><h3>⏱ Tiempo de pantalla</h3>
+      <p class="muted">Cambia tus minutos guardados por tiempo extra. Papá aprueba según el día.</p>
+      <button class="btn blue" onclick="modalWithdraw()">Pedir tiempo</button></div>
+    <div class="card"><h3>🎮 Robux</h3>
+      <p class="muted">${config.mxnPer10Min} MXN por cada 10 min guardados. Mínimo $${config.minRobuxMxn}.</p>
+      <button class="btn coral" onclick="modalRobux()">Cambiar por Robux</button></div>
+    <div class="card"><h3>🧊 Congelar racha</h3>
+      <p class="muted">¿Día muy ocupado? Pide congelar tu racha (máx 2 por semana).</p>
+      <button class="btn ghost" onclick="submitFreeze()">Pedir congelada</button></div>
+    ${mine.length?`<div class="card"><h3>Mis solicitudes</h3>${mine.map(r=>reqLine(r,false)).join("")}</div>`:""}`;
+}
+function reqLine(r, parentMode){
+  const names={retiro:"⏱ Tiempo de pantalla",robux:"🎮 Robux",congelar:"🧊 Congelar racha"};
+  const amount = r.type==="retiro" ? minToStr(r.amountMin) : r.type==="robux" ? `$${r.amountMxn} (${robuxCostMin(r.amountMxn)} min)` : "";
+  const st={pendiente:["pend","pendiente"],aprobada:["ok","aprobada"],rechazada:["no","rechazada"]}[r.status];
+  return `<div class="item"><div class="grow"><div class="t">${names[r.type]||r.type}</div><div class="s">${amount}</div></div>
+    ${parentMode && r.status==="pendiente" ? `
+      <button class="btn mint sm" onclick='approveRequest(requests.find(x=>x.id==="${r.id}"))'>Sí</button>
+      <button class="btn coral sm" onclick='rejectRequest(requests.find(x=>x.id==="${r.id}"))'>No</button>`
+    : `<span class="tag ${st[0]}">${st[1]}</span>`}</div>`;
+}
+
+/* ---------- PAPÁ ---------- */
+function parentView(){
+  if(tab==="inbox") return parentInbox();
+  if(tab==="libros") return books.map(b=>bookCard(b,true)).join("") || `<div class="card empty"><span class="i">📚</span>Sin libros</div>`;
+  if(tab==="hist") return historyView();
+  if(tab==="ajustes") return parentSettings();
+  return "";
+}
+function parentInbox(){
+  const pb = books.filter(b=>b.status==="pendiente");
+  const ps = sessions.filter(s=>s.status==="pendiente");
+  const pr = requests.filter(r=>r.status==="pendiente");
+  if(!pb.length && !ps.length && !pr.length) return `<div class="card empty"><span class="i">✅</span>Todo al día. Nada pendiente.</div>`;
+  return `
+    ${ps.length?`<div class="card"><h3>📖 Lecturas por aprobar</h3><p class="muted">Regla: primero que te cuente qué leyó.</p>
+      ${ps.map(s=>{
+        const b=books.find(x=>x.id===s.bookId)||{language:"es"};
+        const e=earnFor(s.pages,b.language,!!b.isReread);
+        return `<div class="item"><div class="grow"><div class="t">${esc(s.bookTitle)}</div>
+          <div class="s">${s.pages} pág · ${fmtDate(s.date)} · daría +${e.pts} pts, +${e.min} min</div></div>
+          <button class="btn mint sm" onclick='approveSession(sessions.find(x=>x.id==="${s.id}"))'>Sí</button>
+          <button class="btn coral sm" onclick='rejectSession(sessions.find(x=>x.id==="${s.id}"))'>No</button></div>`;}).join("")}</div>`:""}
+    ${pb.length?`<div class="card"><h3>📚 Libros por aprobar</h3>${pb.map(b=>bookCard(b,true)).join("")}</div>`:""}
+    ${pr.length?`<div class="card"><h3>🎁 Solicitudes</h3>${pr.map(r=>reqLine(r,true)).join("")}</div>`:""}`;
+}
+function parentSettings(){
+  const c=config;
+  return `
+    <div class="card"><h3>⚙️ Tasas (revisar cada 3 meses)</h3>
+      <label>Puntos por página (ES)</label><input id="cf-ptsEs" type="number" value="${c.ptsEs}">
+      <label>Puntos por página (EN)</label><input id="cf-ptsEn" type="number" value="${c.ptsEn}">
+      <label>Páginas por 1 minuto</label><input id="cf-ppm" type="number" value="${c.pagesPerMin}">
+      <label>MXN por cada 10 min (Robux)</label><input id="cf-mxn" type="number" value="${c.mxnPer10Min}">
+      <label>Mínimo Robux (MXN)</label><input id="cf-minrbx" type="number" value="${c.minRobuxMxn}">
+      <label>Páginas mínimas para racha</label><input id="cf-smin" type="number" value="${c.streakMinPages}">
+      <label>Bono cada 7 días de racha</label><input id="cf-sbonus" type="number" value="${c.streakBonus}">
+      <button class="btn blue" style="margin-top:14px" onclick="saveConfig()">Guardar tasas</button></div>
+    <div class="card"><h3>✏️ Ajuste manual</h3>
+      <label>Puntos (+/−)</label><input id="adj-pts" type="number" value="0">
+      <label>Minutos (+/−)</label><input id="adj-min" type="number" value="0">
+      <label>Motivo</label><input id="adj-note" placeholder="Ej. bono por buena semana">
+      <button class="btn gold" style="margin-top:14px" onclick="manualAdjust()">Aplicar</button></div>
+    <div class="card"><h3>🔐 PIN de papá</h3>
+      <label>Nuevo PIN</label><input id="cf-pin" type="password" placeholder="****">
+      <button class="btn ghost" style="margin-top:14px" onclick="savePin()">Cambiar PIN</button></div>
+    <button class="btn ghost" onclick="logout()">Salir de modo papá</button>`;
+}
+async function saveConfig(){
+  const num=id=>parseFloat($(id).value)||0;
+  await root.collection("meta").doc("config").update({
+    ptsEs:num("#cf-ptsEs"),ptsEn:num("#cf-ptsEn"),pagesPerMin:num("#cf-ppm"),
+    mxnPer10Min:num("#cf-mxn"),minRobuxMxn:num("#cf-minrbx"),
+    streakMinPages:num("#cf-smin"),streakBonus:num("#cf-sbonus")});
+  toast("Tasas guardadas");
+}
+async function manualAdjust(){
+  const pts=parseInt($("#adj-pts").value,10)||0, min=parseInt($("#adj-min").value,10)||0;
+  const note=$("#adj-note").value.trim()||"Ajuste de papá";
+  if(!pts&&!min) return;
+  await updState({points:FieldValue.increment(pts),minutes:FieldValue.increment(min)});
+  await addMove("ajuste",`✏️ ${note}`,{pts,min});
+  toast("Ajuste aplicado");
+}
+async function savePin(){
+  const p=$("#cf-pin").value.trim();
+  if(p.length<4) return alert("Mínimo 4 dígitos");
+  await root.collection("meta").doc("config").update({parentPin:p});
+  toast("PIN actualizado");
+}
+
+/* ---------- HISTORIAL ---------- */
+function historyView(){
+  if(!moves.length) return `<div class="card empty"><span class="i">📜</span>Aún no hay movimientos</div>`;
+  return `<div class="card"><h3>📜 Historial</h3>${moves.map(m=>{
+    const parts=[];
+    if(m.pts) parts.push(`<span class="amount ${m.pts>0?"plus":"minus"}">${m.pts>0?"+":""}${m.pts} pts</span>`);
+    if(m.min) parts.push(`<span class="amount ${m.min>0?"plus":"minus"}">${m.min>0?"+":""}${m.min} min</span>`);
+    if(m.mxn) parts.push(`<span class="amount" style="color:var(--gold)">$${m.mxn}</span>`);
+    return `<div class="item"><div class="grow"><div class="t">${esc(m.label)}</div><div class="s">${fmtDate(m.date)}</div></div>${parts.join(" ")}</div>`;
+  }).join("")}</div>
+  ${role==="kid"?`<button class="btn ghost" onclick="logout()">Cambiar de usuario</button>`:""}`;
+}
+
+/* SW */
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>

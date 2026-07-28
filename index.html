@@ -180,6 +180,7 @@ function suggestPrize(pages, lang, isReread){
 }
 function robuxCostPts(mxn){ return Math.round(mxn * (config.ptsPerMxn||10)); } // legacy fallback
 function robuxPts(rbx){ return Math.ceil(rbx * (config.eventMult>1 ? 0.5 : 1)); }
+function internetPts(hrs){ const base={1:50,2:60,4:80}[hrs]||0; return Math.ceil(base * (config.eventMult>1 ? 0.5 : 1)); }
 function robuxCostMin(mxn){ return Math.round(mxn / (config.mxnPer10Min||5) * 10); }
 
 /* ================= FIRESTORE SEED + LISTEN ================= */
@@ -319,6 +320,13 @@ async function approveRequest(r, amountOverride){
     await updState({points:FieldValue.increment(-r.cost)});
     await addMove("perk",`${r.perkEmoji||"🎁"} Compró: ${r.perkName}`,{pts:-r.cost});
     toast(`Aprobado: ${r.perkName}`);
+  }else if(r.type==="internet"){
+    const cost = r.cost || internetPts(r.hrs);
+    if(state.points < cost) return alert(`Puntos insuficientes: cuesta ${cost} y tiene ${state.points}`);
+    await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
+    await updState({points:FieldValue.increment(-cost)});
+    await addMove("internet",`📶 Compró internet: ${r.hrs} hr${r.hrs>1?"s":""}`,{pts:-cost});
+    toast(`Aprobado: ${r.hrs} hr${r.hrs>1?"s":""} de internet (−${cost} pts). Ahora actívale el paquete.`);
   }else if(r.type==="congelar"){
     const wk = weekKey();
     let used = (state.weekKey===wk) ? (state.freezesThisWeek||0) : 0;
@@ -440,6 +448,23 @@ function modalRobux(){
   `);
 }
 function pickChip(el,v){ reqPick=v; document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on")); el.classList.add("on"); }
+function modalInternet(){
+  reqPick=0;
+  const opts=[1,2,4].map(h=>`<button class="chip" onclick="pickChip(this,${h})">${h} hr${h>1?"s":""}<br><small style="font-weight:600">${internetPts(h)} pts</small></button>`).join("");
+  showModal(`
+    <h3>📶 Comprar internet</h3>
+    <p class="muted">${config.eventMult>1?"⚡ Precio de evento (mitad). ":""}Tienes <b style="color:var(--gold)">${state.points} pts</b>. El paquete de 4 hrs es la mejor oferta.</p>
+    <div class="chip-row">${opts}</div>
+    <button class="btn mint" onclick="submitInternet()">Pedir a papá</button>
+  `);
+}
+async function submitInternet(){
+  if(reqPick<=0) return alert("Elige un paquete");
+  const cost = internetPts(reqPick);
+  if(cost > state.points) return alert(`Necesitas ${cost} puntos y tienes ${state.points}`);
+  await col("requests").add({type:"internet",hrs:reqPick,cost,status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+  closeModal(); toast("📶 Solicitud enviada a papá");
+}
 function pickChipR(el,mxn,rbx){ reqPick=mxn; reqPickRbx=rbx; document.querySelectorAll(".chip").forEach(c=>c.classList.remove("on")); el.classList.add("on"); }
 
 /* ================= RENDER ================= */
@@ -579,6 +604,9 @@ function kidRequests(){
     <div class="card"><h3>🎮 Robux</h3>
       <p class="muted">${config.eventMult>1?"⚡ EVENTO: 1 punto = 2 Robux (40 R$ = 20 pts). ":"1 punto = 1 Robux. "}También puedes pagar con minutos.</p>
       <button class="btn coral" onclick="modalRobux()">Cambiar por Robux</button></div>
+    <div class="card"><h3>📶 Internet para tu cel</h3>
+      <p class="muted">Compra horas de internet con tus puntos${config.eventMult>1?" — ⚡ a mitad de precio por el evento":""}. Solo dan señal: el límite de pantalla sigue igual.</p>
+      <button class="btn mint" onclick="modalInternet()">Comprar internet</button></div>
     <div class="card"><h3>🧊 Congelar racha</h3>
       <p class="muted">¿Día muy ocupado? Pide congelar tu racha (máx 2 por semana).</p>
       <button class="btn ghost" onclick="submitFreeze()">Pedir congelada</button></div>
@@ -608,8 +636,8 @@ async function approveWish(id){
   toast(`✨ Aprobado por ${cost} pts`);
 }
 function reqLine(r, parentMode){
-  const names={retiro:"⏱ Tiempo de pantalla",robux:"🎮 Robux",congelar:"🧊 Congelar racha",perk:`${r.perkEmoji||"🎁"} ${esc(r.perkName||"Premio")}`,deseo:`✨ ${esc(r.wish||"Deseo")}`};
-  const amount = r.type==="retiro" ? minToStr(r.amountMin) : r.type==="robux" ? `${r.rbx?r.rbx+" R$ · ":""}$${r.amountMxn} (${r.payWith==="pts"?(r.rbx?robuxPts(r.rbx):robuxCostPts(r.amountMxn))+" pts":robuxCostMin(r.amountMxn)+" min"})` : r.type==="perk" ? `${r.cost} puntos` : r.type==="deseo" ? (r.status==="aprobada"?`${r.cost} puntos`:"papá decide el costo") : "";
+  const names={retiro:"⏱ Tiempo de pantalla",robux:"🎮 Robux",internet:`📶 Internet ${r.hrs||""} hr${(r.hrs||0)>1?"s":""}`,congelar:"🧊 Congelar racha",perk:`${r.perkEmoji||"🎁"} ${esc(r.perkName||"Premio")}`,deseo:`✨ ${esc(r.wish||"Deseo")}`};
+  const amount = r.type==="retiro" ? minToStr(r.amountMin) : r.type==="robux" ? `${r.rbx?r.rbx+" R$ · ":""}$${r.amountMxn} (${r.payWith==="pts"?(r.rbx?robuxPts(r.rbx):robuxCostPts(r.amountMxn))+" pts":robuxCostMin(r.amountMxn)+" min"})` : r.type==="internet" ? `${r.cost} puntos` : r.type==="perk" ? `${r.cost} puntos` : r.type==="deseo" ? (r.status==="aprobada"?`${r.cost} puntos`:"papá decide el costo") : "";
   const st={pendiente:["pend","pendiente"],aprobada:["ok","aprobada"],rechazada:["no","rechazada"]}[r.status];
   if(parentMode && r.status==="pendiente" && r.type==="deseo"){
     return `<div class="item" style="flex-wrap:wrap"><div class="grow" style="min-width:100%"><div class="t">${names.deseo}</div><div class="s">Tiene ${state.points} pts · pon el costo:</div></div>

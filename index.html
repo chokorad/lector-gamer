@@ -122,6 +122,7 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+const APP_VERSION = "v8";
 const FAM = "fam_7kQ2mXr9pL4wZ8vB";           // ruta privada de la familia
 const root = db.collection("families").doc(FAM);
 const col = n => root.collection(n);
@@ -137,6 +138,7 @@ const DEFAULT_CONFIG = {
   kidName:"Yosi", parentPin:"1234",
   ptsEs:1, ptsEn:2, pagesPerMin:2, ptsPerMxn:10, mxnPer10Min:5, minRobuxMxn:40,
   streakMinPages:5, streakBonus:25, dailyBonusPts:5, dailyBonusMin:5,
+  timeGoalMin:30, timeBonusMin:30, streak3Min:30, streak5Min:45, streak7Min:60,
   milestones:{ "30":100, "60":250, "100":500 },
   eventMult:1,
   perks:[
@@ -194,6 +196,7 @@ async function boot(){
     if(d.eventMult===undefined) patch.eventMult=1;
     if(d.ptsPerMxn===undefined) patch.ptsPerMxn=10;
     if(d.econV6===undefined){ patch.streakMinPages=5; patch.dailyBonusPts=5; patch.dailyBonusMin=5; patch.econV6=true; }
+    if(d.econV8===undefined){ patch.timeGoalMin=30; patch.timeBonusMin=30; patch.streak3Min=30; patch.streak5Min=45; patch.streak7Min=60; patch.econV8=true; }
     if(d.mxnPer10Min===undefined) patch.mxnPer10Min=5;
     const oldDefaults = d.perks && d.perks.length===3 && d.perks[0]?.id==="p1";
     if(d.perks===undefined || oldDefaults) patch.perks=DEFAULT_CONFIG.perks;
@@ -249,10 +252,20 @@ async function updateStreak(dateStr, pagesJustApproved, sessionId){
   const patch = {streak:ns, lastStreakDate:dateStr};
   if(ns > (st.bestStreak||0)) patch.bestStreak = ns;
   await updState(patch);
+  if(ns===3 && c.streak3Min){
+    await updState({minutes:FieldValue.increment(c.streak3Min)});
+    await addMove("racha",`🔥 Racha de 3 días`,{min:c.streak3Min});
+    toast(`🔥 ¡3 días seguidos! +${c.streak3Min} min`);
+  }
+  if(ns===5 && c.streak5Min){
+    await updState({minutes:FieldValue.increment(c.streak5Min)});
+    await addMove("racha",`🔥 Racha de 5 días`,{min:c.streak5Min});
+    toast(`🔥 ¡5 días seguidos! +${c.streak5Min} min`);
+  }
   if(ns>0 && ns%7===0){
-    await updState({points:FieldValue.increment(c.streakBonus)});
-    await addMove("racha",`Racha de ${ns} días 🔥`,{pts:c.streakBonus});
-    toast(`🔥 ¡Racha de ${ns} días! +${c.streakBonus} pts`);
+    await updState({points:FieldValue.increment(c.streakBonus), minutes:FieldValue.increment(c.streak7Min||0)});
+    await addMove("racha",`Racha de ${ns} días 🔥`,{pts:c.streakBonus,min:c.streak7Min||0});
+    toast(`🔥 ¡Racha de ${ns} días! +${c.streakBonus} pts, +${c.streak7Min||0} min`);
   }
   const mil = (c.milestones||{})[String(ns)];
   if(mil){
@@ -327,6 +340,16 @@ async function approveRequest(r, amountOverride){
     await updState({points:FieldValue.increment(-cost)});
     await addMove("internet",`📶 Compró internet: ${r.hrs} hr${r.hrs>1?"s":""}`,{pts:-cost});
     toast(`Aprobado: ${r.hrs} hr${r.hrs>1?"s":""} de internet (−${cost} pts). Ahora actívale el paquete.`);
+  }else if(r.type==="tiempo"){
+    await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
+    const dayTimed = requests.filter(x=>x.type==="tiempo" && x.date===r.date && x.status==="aprobada" && x.id!==r.id).reduce((a,x)=>a+(x.min||0),0) + r.min;
+    if(dayTimed >= (config.timeGoalMin||30) && state.lastTimeBonusDate !== r.date){
+      await updState({minutes:FieldValue.increment(config.timeBonusMin||30), lastTimeBonusDate:r.date});
+      await addMove("tiempo",`⏳ Leyó ${config.timeGoalMin}+ min en el día`,{min:config.timeBonusMin||30});
+      toast(`✅ Aprobado. ⏳ ¡Meta del día! +${config.timeBonusMin} min`);
+    } else {
+      toast(`✅ Aprobado: ${r.min} min leídos (lleva ${dayTimed}/${config.timeGoalMin} min hoy)`);
+    }
   }else if(r.type==="congelar"){
     const wk = weekKey();
     let used = (state.weekKey===wk) ? (state.freezesThisWeek||0) : 0;
@@ -388,6 +411,43 @@ async function submitFreeze(){
   await col("requests").add({type:"congelar",status:"pendiente",createdAt:FieldValue.serverTimestamp()});
   closeModal(); toast("🧊 Solicitud enviada");
 }
+
+/* ================= MODO LECTURA (cronómetro) ================= */
+function timerCard(){
+  const start = localStorage.getItem("lg_timer_start");
+  if(start){
+    const min = Math.floor((Date.now()-Number(start))/60000);
+    return `<div class="card" style="border-color:var(--mint)">
+      <div class="row"><span style="font-size:26px">⏳</span><div class="grow">
+        <h3 style="margin:0">Modo Lectura activo</h3>
+        <div class="s muted">Llevas <b id="timer-elapsed" style="color:var(--mint)">${min}</b> min — meta: ${config.timeGoalMin} min al día</div></div></div>
+      <button class="btn mint" style="margin-top:10px" onclick="stopTimer()">⏹ Terminar y enviar a papá</button>
+      <button class="btn ghost sm" style="margin-top:8px" onclick="cancelTimer()">Cancelar (no cuenta)</button>
+    </div>`;
+  }
+  return `<div class="card">
+    <div class="row"><span style="font-size:26px">⏱</span><div class="grow">
+      <h3 style="margin:0">Modo Lectura</h3>
+      <div class="s muted">Lee ${config.timeGoalMin} min al día = +${config.timeBonusMin} min de pantalla</div></div>
+    <button class="btn blue sm" onclick="startTimer()">▶ Iniciar</button></div>
+  </div>`;
+}
+function startTimer(){ localStorage.setItem("lg_timer_start", String(Date.now())); render(); }
+function cancelTimer(){ if(confirm("¿Cancelar? Este tiempo no contará.")){ localStorage.removeItem("lg_timer_start"); render(); } }
+async function stopTimer(){
+  const start = Number(localStorage.getItem("lg_timer_start")||0);
+  if(!start) return;
+  const min = Math.floor((Date.now()-start)/60000);
+  localStorage.removeItem("lg_timer_start");
+  if(min < 1){ toast("Menos de 1 minuto — no cuenta"); render(); return; }
+  await col("requests").add({type:"tiempo",min,date:todayStr(),status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+  render(); toast(`⏳ ${min} min enviados a papá`);
+}
+setInterval(()=>{
+  const el=document.getElementById("timer-elapsed");
+  const start=localStorage.getItem("lg_timer_start");
+  if(el&&start) el.textContent=Math.floor((Date.now()-Number(start))/60000);
+},15000);
 
 /* ================= MODALS ================= */
 function showModal(html){
@@ -505,7 +565,7 @@ function setTab(t){ tab=t; render(); window.scrollTo(0,0); }
 /* ---------- vistas rol ---------- */
 function viewRole(){
   return `<div class="wrap"><div class="hero">
-    <h1>📖 Lector Gamer</h1><p>Lee. Gana. Juega.</p></div>
+    <h1>📖 Lector Gamer</h1><p>Lee. Gana. Juega.</p><p class="muted" style="font-size:12px">${APP_VERSION}</p></div>
     <button class="btn blue role-btn" onclick="chooseRole('kid')">🧒 Soy ${esc(config.kidName)}</button>
     <button class="btn ghost role-btn" onclick="chooseRole('parent')">👨 Soy papá</button>
   </div>`;
@@ -544,6 +604,7 @@ function kidHome(){
         : `Lee <b style="color:var(--gold)">${config.streakMinPages - readToday} páginas más</b> hoy para cuidar tu racha 🔥`}</p>
       <button class="btn mint" style="margin-top:10px" onclick="modalNewSession()">📖 Registrar lectura</button>
     </div>
+    ${timerCard()}
     ${reading.length ? reading.map(b=>{
       const p = Math.min(100, Math.round((b.pagesApproved||0)/b.totalPages*100));
       return `<div class="card">
@@ -636,8 +697,8 @@ async function approveWish(id){
   toast(`✨ Aprobado por ${cost} pts`);
 }
 function reqLine(r, parentMode){
-  const names={retiro:"⏱ Tiempo de pantalla",robux:"🎮 Robux",internet:`📶 Internet ${r.hrs||""} hr${(r.hrs||0)>1?"s":""}`,congelar:"🧊 Congelar racha",perk:`${r.perkEmoji||"🎁"} ${esc(r.perkName||"Premio")}`,deseo:`✨ ${esc(r.wish||"Deseo")}`};
-  const amount = r.type==="retiro" ? minToStr(r.amountMin) : r.type==="robux" ? `${r.rbx?r.rbx+" R$ · ":""}$${r.amountMxn} (${r.payWith==="pts"?(r.rbx?robuxPts(r.rbx):robuxCostPts(r.amountMxn))+" pts":robuxCostMin(r.amountMxn)+" min"})` : r.type==="internet" ? `${r.cost} puntos` : r.type==="perk" ? `${r.cost} puntos` : r.type==="deseo" ? (r.status==="aprobada"?`${r.cost} puntos`:"papá decide el costo") : "";
+  const names={retiro:"⏱ Tiempo de pantalla",tiempo:"⏳ Modo Lectura",robux:"🎮 Robux",internet:`📶 Internet ${r.hrs||""} hr${(r.hrs||0)>1?"s":""}`,congelar:"🧊 Congelar racha",perk:`${r.perkEmoji||"🎁"} ${esc(r.perkName||"Premio")}`,deseo:`✨ ${esc(r.wish||"Deseo")}`};
+  const amount = r.type==="retiro" ? minToStr(r.amountMin) : r.type==="tiempo" ? `${r.min} min leídos` : r.type==="robux" ? `${r.rbx?r.rbx+" R$ · ":""}$${r.amountMxn} (${r.payWith==="pts"?(r.rbx?robuxPts(r.rbx):robuxCostPts(r.amountMxn))+" pts":robuxCostMin(r.amountMxn)+" min"})` : r.type==="internet" ? `${r.cost} puntos` : r.type==="perk" ? `${r.cost} puntos` : r.type==="deseo" ? (r.status==="aprobada"?`${r.cost} puntos`:"papá decide el costo") : "";
   const st={pendiente:["pend","pendiente"],aprobada:["ok","aprobada"],rechazada:["no","rechazada"]}[r.status];
   if(parentMode && r.status==="pendiente" && r.type==="deseo"){
     return `<div class="item" style="flex-wrap:wrap"><div class="grow" style="min-width:100%"><div class="t">${names.deseo}</div><div class="s">Tiene ${state.points} pts · pon el costo:</div></div>
@@ -713,7 +774,8 @@ function parentSettings(){
     <div class="card"><h3>🔐 PIN de papá</h3>
       <label>Nuevo PIN</label><input id="cf-pin" type="password" placeholder="****">
       <button class="btn ghost" style="margin-top:14px" onclick="savePin()">Cambiar PIN</button></div>
-    <button class="btn ghost" onclick="logout()">Salir de modo papá</button>`;
+    <button class="btn ghost" onclick="logout()">Salir de modo papá</button>
+    <p class="muted" style="text-align:center;font-size:12px;margin-top:14px">Lector Gamer ${APP_VERSION}</p>`;
 }
 async function toggleEvent(){
   const now = config.eventMult>1 ? 1 : 2;

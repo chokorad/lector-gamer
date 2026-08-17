@@ -122,14 +122,14 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
-const APP_VERSION = "v8";
+const APP_VERSION = "v9";
 const FAM = "fam_7kQ2mXr9pL4wZ8vB";           // ruta privada de la familia
 const root = db.collection("families").doc(FAM);
 const col = n => root.collection(n);
 const FieldValue = firebase.firestore.FieldValue;
 
 /* ================= STATE ================= */
-let config=null, state=null, books=[], sessions=[], requests=[], moves=[];
+let config=null, state=null, books=[], sessions=[], requests=[], moves=[], deliveries=[];
 let role = localStorage.getItem("lg_role") || null;   // 'kid' | 'parent'
 let tab = "inicio";
 let unsub = [];
@@ -210,8 +210,26 @@ async function boot(){
   unsub.push(col("sessions").orderBy("createdAt","desc").limit(120).onSnapshot(q=>{ sessions=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
   unsub.push(col("requests").orderBy("createdAt","desc").limit(60).onSnapshot(q=>{ requests=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
   unsub.push(col("moves").orderBy("createdAt","desc").limit(80).onSnapshot(q=>{ moves=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
+  unsub.push(col("deliveries").orderBy("createdAt","desc").limit(60).onSnapshot(q=>{ deliveries=q.docs.map(d=>({id:d.id,...d.data()})); render(); }));
 }
 boot();
+
+/* Entregas pendientes */
+function addDelivery(label){
+  return col("deliveries").add({label,status:"pendiente",createdAt:FieldValue.serverTimestamp()});
+}
+function daysAgo(ts){
+  try{ const d=ts?.toDate?.(); if(!d) return "";
+    const n=Math.floor((Date.now()-d.getTime())/86400000);
+    return n<=0?"hoy":n===1?"hace 1 día":`hace ${n} días`;
+  }catch(e){ return ""; }
+}
+async function markDelivered(id){
+  const d=deliveries.find(x=>x.id===id); if(!d) return;
+  await col("deliveries").doc(id).update({status:"entregado",deliveredAt:FieldValue.serverTimestamp()});
+  await addMove("entrega",`✅ Entregado: ${d.label}`,{});
+  toast("✅ Marcado como entregado");
+}
 
 /* Ledger */
 function addMove(type,label,{pts=0,min=0,mxn=0}={}){
@@ -299,7 +317,8 @@ async function finishBook(id){
   const b = books.find(x=>x.id===id); if(!b) return;
   await col("books").doc(id).update({status:"terminado",finishedAt:FieldValue.serverTimestamp()});
   await addMove("libro",`📕 Terminó "${b.title}" — premio Robux`,{mxn:b.prizeMxn});
-  closeModal(); toast(`🎁 Premio de $${b.prizeMxn} registrado`);
+  await addDelivery(`📕 Tarjeta OXXO $${b.prizeMxn} — "${b.title}"`);
+  closeModal(); toast(`🎁 Premio de $${b.prizeMxn} registrado — quedó en Por entregar`);
 }
 async function approveRequest(r, amountOverride){
   const ref = col("requests").doc(r.id);
@@ -318,6 +337,7 @@ async function approveRequest(r, amountOverride){
       await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
       await updState({points:FieldValue.increment(-cost)});
       await addMove("robux",`🎮 ${r.rbx?r.rbx+" Robux":"Robux"} — $${r.amountMxn} (pagó con puntos)`,{pts:-cost,mxn:r.amountMxn});
+      await addDelivery(`🎮 ${r.rbx||""} Robux`);
       toast(`Aprobado: $${r.amountMxn} MXN (−${cost} pts)`);
     }else{
       const cost = robuxCostMin(r.amountMxn);
@@ -325,6 +345,7 @@ async function approveRequest(r, amountOverride){
       await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
       await updState({minutes:FieldValue.increment(-cost)});
       await addMove("robux",`🎮 ${r.rbx?r.rbx+" Robux":"Robux"} — $${r.amountMxn} (pagó con minutos)`,{min:-cost,mxn:r.amountMxn});
+      await addDelivery(`🎮 ${r.rbx||""} Robux`);
       toast(`Aprobado: $${r.amountMxn} MXN (−${cost} min)`);
     }
   }else if(r.type==="perk"){
@@ -332,6 +353,7 @@ async function approveRequest(r, amountOverride){
     await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
     await updState({points:FieldValue.increment(-r.cost)});
     await addMove("perk",`${r.perkEmoji||"🎁"} Compró: ${r.perkName}`,{pts:-r.cost});
+    await addDelivery(`${r.perkEmoji||"🎁"} ${r.perkName}`);
     toast(`Aprobado: ${r.perkName}`);
   }else if(r.type==="internet"){
     const cost = r.cost || internetPts(r.hrs);
@@ -339,6 +361,7 @@ async function approveRequest(r, amountOverride){
     await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
     await updState({points:FieldValue.increment(-cost)});
     await addMove("internet",`📶 Compró internet: ${r.hrs} hr${r.hrs>1?"s":""}`,{pts:-cost});
+    await addDelivery(`📶 Internet ${r.hrs} hr${r.hrs>1?"s":""}`);
     toast(`Aprobado: ${r.hrs} hr${r.hrs>1?"s":""} de internet (−${cost} pts). Ahora actívale el paquete.`);
   }else if(r.type==="tiempo"){
     await ref.update({status:"aprobada",decidedAt:FieldValue.serverTimestamp()});
@@ -605,6 +628,9 @@ function kidHome(){
       <button class="btn mint" style="margin-top:10px" onclick="modalNewSession()">📖 Registrar lectura</button>
     </div>
     ${timerCard()}
+    ${(()=>{const pend=deliveries.filter(d=>d.status==="pendiente");
+      return pend.length?`<div class="card" style="border-color:var(--gold)"><h3>🎁 Por recibir</h3>
+      ${pend.map(d=>`<div class="item"><div class="grow"><div class="t">${esc(d.label)}</div><div class="s">${daysAgo(d.createdAt)}</div></div><span class="tag pend">pendiente</span></div>`).join("")}</div>`:"";})()}
     ${reading.length ? reading.map(b=>{
       const p = Math.min(100, Math.round((b.pagesApproved||0)/b.totalPages*100));
       return `<div class="card">
@@ -693,7 +719,8 @@ async function approveWish(id){
   if(cost > state.points) return alert(`Cuesta ${cost} pero solo tiene ${state.points} puntos`);
   await col("requests").doc(id).update({status:"aprobada",cost,decidedAt:FieldValue.serverTimestamp()});
   if(cost>0) await updState({points:FieldValue.increment(-cost)});
-  await addMove("deseo",`✨ Deseo cumplido: ${r.wish}`,{pts:-cost});
+  await addMove("deseo",`✨ Deseo: ${r.wish}`,{pts:-cost});
+  await addDelivery(`✨ ${r.wish}`);
   toast(`✨ Aprobado por ${cost} pts`);
 }
 function reqLine(r, parentMode){
@@ -725,8 +752,14 @@ function parentInbox(){
   const pb = books.filter(b=>b.status==="pendiente");
   const ps = sessions.filter(s=>s.status==="pendiente");
   const pr = requests.filter(r=>r.status==="pendiente");
-  if(!pb.length && !ps.length && !pr.length) return `<div class="card empty"><span class="i">✅</span>Todo al día. Nada pendiente.</div>`;
+  const pd = deliveries.filter(d=>d.status==="pendiente");
+  const dSec = pd.length?`<div class="card" style="border-color:var(--gold)"><h3>🎁 Por entregar</h3>
+    <p class="muted">Lo que ya se ganó y falta darle. Marca al entregarlo.</p>
+    ${pd.map(d=>`<div class="item"><div class="grow"><div class="t">${esc(d.label)}</div><div class="s">${daysAgo(d.createdAt)}</div></div>
+      <button class="btn mint sm" onclick="markDelivered('${d.id}')">✅ Entregado</button></div>`).join("")}</div>`:"";
+  if(!pb.length && !ps.length && !pr.length) return dSec + `<div class="card empty"><span class="i">✅</span>Nada por aprobar.</div>`;
   return `
+    ${dSec}
     ${ps.length?`<div class="card"><h3>📖 Lecturas por aprobar</h3><p class="muted">Regla: primero que te cuente qué leyó.</p>
       ${ps.map(s=>{
         const b=books.find(x=>x.id===s.bookId)||{language:"es"};
@@ -771,6 +804,10 @@ function parentSettings(){
       <label>Minutos (+/−)</label><input id="adj-min" type="number" value="0">
       <label>Motivo</label><input id="adj-note" placeholder="Ej. bono por buena semana">
       <button class="btn gold" style="margin-top:14px" onclick="manualAdjust()">Aplicar</button></div>
+    <div class="card"><h3>🎁 Agregar pendiente manual</h3>
+      <p class="muted">Para deudas de antes de esta versión (ej. una tarjeta que aún no compras).</p>
+      <label>Descripción</label><input id="md-label" placeholder="Ej. 🎮 40 Robux de la semana pasada">
+      <button class="btn gold" style="margin-top:14px" onclick="manualDelivery()">Agregar a Por entregar</button></div>
     <div class="card"><h3>🔐 PIN de papá</h3>
       <label>Nuevo PIN</label><input id="cf-pin" type="password" placeholder="****">
       <button class="btn ghost" style="margin-top:14px" onclick="savePin()">Cambiar PIN</button></div>
@@ -811,6 +848,13 @@ async function manualAdjust(){
   await updState({points:FieldValue.increment(pts),minutes:FieldValue.increment(min)});
   await addMove("ajuste",`✏️ ${note}`,{pts,min});
   toast("Ajuste aplicado");
+}
+async function manualDelivery(){
+  const label=$("#md-label").value.trim();
+  if(!label) return alert("Escribe la descripción");
+  await addDelivery(label);
+  $("#md-label").value="";
+  toast("Agregado a Por entregar");
 }
 async function savePin(){
   const p=$("#cf-pin").value.trim();
